@@ -10,8 +10,9 @@ install:
     - make install
 
 before_script:
-    - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.9 90
-    - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 90
+    - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 90
+    - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90
+    - sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-9 90
     - sudo apt-get install -y clang-3.5
 
 script:
@@ -26,8 +27,11 @@ addons:
     sources:
       - ubuntu-toolchain-r-test
     packages:
+      - cflow
       - g++-4.9
       - gcc-4.9
+      - g++-9
+      - gcc-9
       - time
       - libunwind8-dev
 

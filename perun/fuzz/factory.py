@@ -9,21 +9,25 @@ import os
 import os.path as path
 import signal
 import sys
-import time
 import threading
+import time
 from subprocess import CalledProcessError, TimeoutExpired
 from uuid import uuid4
+
 import numpy as np
 import tabulate
 
-import perun.utils.decorators as decorators
-import perun.fuzz.interpret as interpret
+import perun.fuzz.callgraph as cg
 import perun.fuzz.filesystem as filesystem
 import perun.fuzz.filetype as filetype
-import perun.utils.log as log
+import perun.fuzz.interpret as interpret
 import perun.fuzz.randomizer as randomizer
 import perun.utils as utils
-from perun.fuzz.structs import FuzzingProgress, Mutation, FuzzingConfiguration
+import perun.utils.decorators as decorators
+import perun.utils.log as log
+from perun.fuzz.evaluate.by_coverage import GCOV_VERSION_W_JSON_FORMAT, compute_vectors_score, Coverage
+from perun.fuzz.helpers import div_vectors_piecewise
+from perun.fuzz.structs import FuzzingConfiguration, FuzzingProgress, Mutation
 
 # to ignore numpy division warnings
 np.seterr(divide='ignore', invalid='ignore')
@@ -198,12 +202,14 @@ def print_legend(rule_set):
     ], headers=["id", "Rule Efficiency", "Description"]))
 
 
-def print_results(fuzzing_report, fuzzing_config, rule_set):
+def print_results(fuzzing_report, fuzzing_config, rule_set, output_dirs, start_timestamp):
     """Prints results of fuzzing.
 
     :param dict fuzzing_report: general information about current fuzzing
     :param FuzzingConfiguration fuzzing_config: configuration of the fuzzing
     :param RuleSet rule_set: selected fuzzing (mutation) strategies and their stats
+    :param dict output_dirs: dictionary of output dirs for distinct files
+    :param str start_timestamp: datetime information about the start of fuzzing
     """
     log.info("Fuzzing: ", end="")
     log.done("\n")
@@ -224,6 +230,12 @@ def print_results(fuzzing_report, fuzzing_config, rule_set):
         log.info("Maximum coverage ratio: {}".format(
             str(fuzzing_report["max_cov"])
         ))
+        if fuzzing_config.new_approach:
+            interpret.print_most_affected_paths(fuzzing_config.coverage.callgraph)
+            if not fuzzing_config.no_plotting:
+                interpret.draw_paths_heatmap(
+                    fuzzing_config.coverage.callgraph, output_dirs["graphs"], start_timestamp)
+
     else:
         log.info("Program executions for performance testing: {}".format(
             fuzzing_report["perun_execs"]
@@ -249,14 +261,17 @@ def evaluate_workloads(method, phase, *args, **kwargs):
     return result
 
 
-def rate_parent(fuzz_progress, mutation):
+def rate_parent(fuzz_progress, mutation, new_approach):
     """ Rate the `mutation` with fitness function and adds it to list with fitness values.
 
     :param FuzzingProgress fuzz_progress: progress of the fuzzing
     :param Mutation mutation: path to a file which is classified as mutation
-    :return bool: True if a file is the same as any parent, otherwise False
+    :param bool new_approach: variable denoting if we work with the static callgraph (True) in
+        coverage analysis or not (False)
     """
-    increase_cov_rate = mutation.cov / fuzz_progress.base_cov
+
+    increase_cov_rate = compute_vectors_score(
+        mutation, fuzz_progress) if new_approach else mutation.cov / fuzz_progress.base_cov
 
     fitness_value = increase_cov_rate + mutation.deg_ratio
     mutation.fitness = fitness_value
@@ -264,20 +279,11 @@ def rate_parent(fuzz_progress, mutation):
     # empty list or the value is actually the largest
     if not fuzz_progress.parents or fitness_value >= fuzz_progress.parents[-1].fitness:
         fuzz_progress.parents.append(mutation)
-        return False
     else:
         for index, parent in enumerate(fuzz_progress.parents):
             if fitness_value <= parent.fitness:
                 fuzz_progress.parents.insert(index, mutation)
-                return False
-            # if the same file was generated before
-            elif abs(fitness_value - parent.fitness) <= FP_ALLOWED_ERROR:
-                # additional file comparing
-                is_binary_file = filetype.get_filetype(mutation.path)[0]
-                mode = "rb" if is_binary_file else "r"
-                parent_lines = open(parent.path, mode).readlines()
-                mutation_lines = open(mutation.path, mode).readlines()
-                return contains_same_lines(parent_lines, mutation_lines, is_binary_file)
+                break
 
 
 def update_parent_rate(parents, mutation):
@@ -372,12 +378,16 @@ def teardown(fuzz_progress, output_dirs, parents, rule_set, config):
         # Plot the results as time series
         log.info("Plotting time series of fuzzing process...")
         interpret.plot_fuzz_time_series(
-            fuzz_progress.deg_time_series, output_dirs["graphs"] + "/degradations_ts.pdf",
+            fuzz_progress.deg_time_series,
+            path.join(
+                output_dirs["graphs"], fuzz_progress.start_timestamp + "_degradations_ts.pdf"),
             "Fuzzing in time", "time (s)", "degradations"
         )
         if config.coverage_testing:
             interpret.plot_fuzz_time_series(
-                fuzz_progress.cov_time_series, output_dirs["graphs"] + "/coverage_ts.pdf",
+                fuzz_progress.cov_time_series,
+                path.join(
+                    output_dirs["graphs"], fuzz_progress.start_timestamp + "_coverage_ts.pdf"),
                 "Max path during fuzing", "time (s)", "executed lines ratio"
             )
     # Plot the differences between seeds and inferred mutation
@@ -389,7 +399,7 @@ def teardown(fuzz_progress, output_dirs, parents, rule_set, config):
 
     fuzz_progress.stats["end_time"] = time.time()
     fuzz_progress.stats["worst_case"] = fuzz_progress.parents[-1].path
-    print_results(fuzz_progress.stats, config, rule_set)
+    print_results(fuzz_progress.stats, config, rule_set, output_dirs, fuzz_progress.start_timestamp)
     log.done()
     sys.exit(0)
 
@@ -410,7 +420,7 @@ def process_successful_mutation(mutation, parents, fuzz_progress, rule_set, conf
     # without cov testing we firstly rate the new parents here
     if not config.coverage_testing:
         parents.append(mutation)
-        rate_parent(fuzz_progress, mutation)
+        rate_parent(fuzz_progress, mutation, config.new_approach)
     # for only updating the parent rate
     else:
         update_parent_rate(fuzz_progress.parents, mutation)
@@ -442,7 +452,7 @@ def perform_baseline_coverage_testing(executable, parents, config):
     :return: base coverage of parents
     """
     base_cov = 0
-    log.info("Performing coverage-based testing on parent seeds.")
+    log.info("Performing coverage-based testing on parent seeds", end=" ")
     try:
         # Note that evaluate workloads modifies config as sideeffect
         base_cov = evaluate_workloads(
@@ -472,8 +482,8 @@ def run_fuzzing_for_command(executable, input_sample, collector, postprocessor, 
     """
 
     # Initialization
-    fuzz_progress = FuzzingProgress()
     config = FuzzingConfiguration(**kwargs)
+    fuzz_progress = FuzzingProgress(config)
 
     output_dirs = filesystem.make_output_dirs(
         config.output_dir, ["hangs", "faults", "diffs", "logs", "graphs"]
@@ -489,15 +499,19 @@ def run_fuzzing_for_command(executable, input_sample, collector, postprocessor, 
 
     # Init coverage testing with seeds
     if config.coverage_testing:
+        if config.new_approach:
+            # get callgraph of project
+            config.coverage.callgraph = cg.initialize(executable, config.coverage.source_path)
         fuzz_progress.base_cov = perform_baseline_coverage_testing(executable, parents, config)
 
     # No gcno files were found, no coverage testing
     if not fuzz_progress.base_cov:
-        fuzz_progress.base_cov = 1  # avoiding possible further zero division
+        # avoiding possible further zero division
+        fuzz_progress.base_cov = Coverage([], []) if config.new_approach else 1
         config.coverage_testing = False
         log.warn("No .gcno files were found.")
 
-    log.info("Performing perun-based testing on parent seeds.")
+    log.info("Performing perun-based testing on parent seeds", end=" ")
     # Init performance testing with seeds
     base_result_profile = evaluate_workloads(
         "by_perun", "baseline_testing", executable, parents, collector, postprocessor,
@@ -508,7 +522,7 @@ def run_fuzzing_for_command(executable, input_sample, collector, postprocessor, 
     log.info("Rating parents ", end='')
     # Rate seeds
     for parent_seed in parents:
-        rate_parent(fuzz_progress, parent_seed)
+        rate_parent(fuzz_progress, parent_seed, config.new_approach)
         log.info('.', end='')
     log.done()
 
@@ -526,7 +540,7 @@ def run_fuzzing_for_command(executable, input_sample, collector, postprocessor, 
     while (time.time() - fuzz_progress.stats["start_time"]) < config.timeout:
         # Gathering interesting workloads
         if config.coverage_testing:
-            log.info("Gathering interesting workloads using coverage based testing")
+            log.info("Gathering interesting workloads using coverage based testing", end=" ")
             execs = config.exec_limit
 
             while len(fuzz_progress.interesting_workloads) < config.precollect_limit and execs > 0:
@@ -540,7 +554,7 @@ def run_fuzzing_for_command(executable, input_sample, collector, postprocessor, 
                         # testing for coverage
                         result = evaluate_workloads(
                             "by_coverage", "target_testing", executable, mutation, collector,
-                            postprocessor, minor_version_list,
+                            postprocessor, minor_version_list, callgraph=config.coverage.callgraph,
                             config=config, fuzzing_progress=fuzz_progress,
                             base_cov=fuzz_progress.base_cov, parent=current_workload, **kwargs
                         )
@@ -565,10 +579,12 @@ def run_fuzzing_for_command(executable, input_sample, collector, postprocessor, 
                         continue
 
                     # if successful mutation
-                    if result and not rate_parent(fuzz_progress, mutation):
-                        fuzz_progress.update_max_coverage()
+                    if result:
+                        rate_parent(fuzz_progress, mutation, config.new_approach)
+                        fuzz_progress.update_max_coverage(config.new_approach)
                         parents.append(mutation)
                         fuzz_progress.interesting_workloads.append(mutation)
+                        log.info('.', end="")
                         rule_set.hits[mutation.history[-1]] += 1
                         rule_set.hits[-1] += 1
                     # not successful mutation or the same file as previously generated
@@ -586,11 +602,10 @@ def run_fuzzing_for_command(executable, input_sample, collector, postprocessor, 
                 current_workload, max_bytes, rule_set, config
             )
 
-        log.info("Evaluating gathered mutations ")
+        log.info("Evaluating gathered mutations")
         for mutation in fuzz_progress.interesting_workloads:
             # creates copy of generator
             base_result_profile, base_copy = itertools.tee(base_result_profile)
-            log.info('.', end="")
 
             # testing with perun
             sucessful_result = False
@@ -603,13 +618,13 @@ def run_fuzzing_for_command(executable, input_sample, collector, postprocessor, 
                 )
                 if sucessful_result:
                     process_successful_mutation(mutation, parents, fuzz_progress, rule_set, config)
+            # in case of testing with coverage, parent wont be removed but used for mutation
+                elif not config.coverage_testing:
+                    os.remove(mutation.path)
+
             # temporarily we ignore error within individual perf testing without previous cov test
             except Exception as exc:
                 log.warn("Executing binary raised an exception: {}".format(exc))
-
-            # in case of testing with coverage, parent wont be removed but used for mutation
-            if not sucessful_result and not config.coverage_testing:
-                os.remove(mutation.path)
 
         # deletes interesting workloads for next run
         log.done()

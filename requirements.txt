@@ -27,3 +27,5 @@ matplotlib==1.5.1
 binaryornot==0.4.4
 tabulate==0.8.6
 pip==8.1.1
+angr==8.19.7.25
+seaborn==0.9.1

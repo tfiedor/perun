@@ -643,6 +643,10 @@ def collect(ctx, **kwargs):
 @click.option('--gcno-path', '-g', nargs=1, required=False,
               type=click.Path(exists=True, writable=True), metavar='<path>',
               help='The path to the directory where .gcno files are stored.')
+@click.option('--gcov-path', '-d', nargs=1, required=False,
+              type=click.Path(exists=True, writable=True), metavar='<path>',
+              help='The path to the directory where building of project is launched'
+              ' (usually where Makefile is located).')
 @click.option('--output-dir', '-o', nargs=1, required=True,
               type=click.Path(exists=True, writable=True), metavar='<path>',
               help='The path to the directory where generated outputs will be stored.')
@@ -689,6 +693,10 @@ def collect(ctx, **kwargs):
               ' written in YAML format file.')
 @click.option('--no-plotting', '-np', is_flag=True, required=False,
               help='Avoiding sometimes lengthy plotting of graphs.')
+@click.option('--new-approach', '-na', is_flag=True, required=False,
+              help='New callgraph unique paths coverage approach.')
+
+
 def fuzz_cmd(cmd, args, **kwargs):
     """Performs fuzzing for the specified command according to the initial sample of workload."""
     kwargs['executable'] = Executable(cmd, args)

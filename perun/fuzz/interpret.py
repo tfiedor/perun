@@ -1,15 +1,20 @@
 """ Module contains a set of functions for fuzzing results interpretation."""
 
-import os.path as path
-import difflib
-import scipy.stats.mstats as stats
-import matplotlib.pyplot as plt
-
-import perun.utils.streams as streams
-import perun.utils.log as log
-import perun.fuzz.filesystem as filesystem
-
 __author__ = 'Matus Liscinsky'
+
+import difflib
+import math
+import os.path as path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy.stats.mstats as stats
+import seaborn as sns
+
+import perun.fuzz.filesystem as filesystem
+import perun.utils.log as log
+import perun.utils.streams as streams
+
 
 # Force matplotlib to not use any Xwindows backend.
 plt.switch_backend('agg')
@@ -33,8 +38,8 @@ def save_anomalies(anomalies, anomaly_type, file_handle):
     :param list anomalies: list of
     :param str anomaly_type: type of the anomalies (e.g. Faults, Hangs)
     :param File file_handle: file, where the anomalies are written
-    :return:
     """
+    log.info("Saving {}s".format(anomaly_type), end=" ")
     if anomalies:
         file_handle.write("{}s:\n".format(anomaly_type.capitalize()))
         for anomaly in anomalies:
@@ -54,7 +59,7 @@ def save_time_series(file_handle, time_series):
         file_handle.write(
             str(x_value) + " " + str(y_value) + "\n"
         )
-        log.info('.')
+        log.info('.', end="")
 
 
 def save_log_files(log_dir, fuzz_progress):
@@ -63,20 +68,23 @@ def save_log_files(log_dir, fuzz_progress):
     :param str log_dir: path to the output log directory
     :param FuzzingProgress fuzz_progress: progress of the fuzzing
     """
-    log.info("Saving log files")
-    deg_data_file = open(log_dir + "/degradation_plot_data.txt", "w")
-    cov_data_file = open(log_dir + "/coverage_plot_data.txt", "w")
-    results_data_file = open(log_dir + "/results_data.txt", "w")
+    log.info("Saving log files ", end="")
+    deg_data_file = open(
+        path.join(log_dir, fuzz_progress.start_timestamp + "_degradation_plot_data.txt"), "w")
+    cov_data_file = open(
+        path.join(log_dir, fuzz_progress.start_timestamp + "_coverage_plot_data.txt"), "w")
+    results_data_file = open(
+        path.join(log_dir, fuzz_progress.start_timestamp + "_results_data.txt"), "w")
 
     save_time_series(deg_data_file, fuzz_progress.deg_time_series)
     save_time_series(cov_data_file, fuzz_progress.cov_time_series)
 
     for mut in fuzz_progress.parents:
         results_data_file.write(
-            str(mut.fitness) + " " + str(mut.cov/fuzz_progress.base_cov) + " " +
+            str(mut.fitness) + " " + str(mut.cov) + " " +
             str(mut.deg_ratio) + " " + mut.path + " " + str(mut.history) + "\n"
         )
-        log.info('.')
+        log.info('.', end="")
     log.done()
 
     save_anomalies(fuzz_progress.hangs, 'hang', results_data_file)
@@ -123,11 +131,16 @@ def plot_fuzz_time_series(time_series, filename, title, xlabel, ylabel):
 
     axis.grid(color='grey', linestyle='-', linewidth=0.5, alpha=0.2)
 
-    st_quartile, nd_quartile, rd_quartile = stats.mquantiles(time_series.y_axis)
-    st_quartile, nd_quartile, rd_quartile = int(st_quartile), int(nd_quartile), int(rd_quartile)
-    st_time = get_time_value(st_quartile, time_series.x_axis, time_series.y_axis)
-    nd_time = get_time_value(nd_quartile, time_series.x_axis, time_series.y_axis)
-    rd_time = get_time_value(rd_quartile, time_series.x_axis, time_series.y_axis)
+    st_quartile, nd_quartile, rd_quartile = stats.mquantiles(
+        time_series.y_axis)
+    st_quartile, nd_quartile, rd_quartile = int(
+        st_quartile), int(nd_quartile), int(rd_quartile)
+    st_time = get_time_value(
+        st_quartile, time_series.x_axis, time_series.y_axis)
+    nd_time = get_time_value(
+        nd_quartile, time_series.x_axis, time_series.y_axis)
+    rd_time = get_time_value(
+        rd_quartile, time_series.x_axis, time_series.y_axis)
 
     axis.axvline(x=st_time, ymin=0, ymax=1, linestyle='--',
                  linewidth=QUARTILE_LINE_WIDTH, alpha=QUARTILE_ALPHA, color='k')
@@ -165,7 +178,7 @@ def files_diff(fuzz_progress, diffs_dir):
     :param FuzzingProgress fuzz_progress: collection of statistics of fuzzing process
     :param str diffs_dir: path to the directory where diffs will be stored
     """
-    log.info("Computing deltas")
+    log.info("Computing deltas", end=" ")
     for mutations in [fuzz_progress.final_results, fuzz_progress.faults, fuzz_progress.hangs]:
         for res in mutations:
             pred = streams.safely_load_file(res.predecessor.path)
@@ -193,5 +206,83 @@ def files_diff(fuzz_progress, diffs_dir):
 
             open(diff_file_name, "w").writelines(diff)
             filesystem.move_file_to(diff_file_name, diffs_dir)
-            log.info('.')
+
     log.done()
+
+
+def print_most_affected_paths(callgraph):
+    """Function prints all callgraph paths, that we were able to affect (specifically their coverage)
+        during the fuzzing. Paths are sorted according to their max coverage ratio with baseline coverage.
+
+    :param CallGraph callgraph: struct of the target application callgraph
+    """
+    log.info("Most affected pahts:")
+
+    # Sort paths by reached coverage increase
+    sorted_paths = sorted(callgraph._unique_paths, key=lambda p: (
+        p.max_inc_cov_increase + p.max_exc_cov_increase)/2, reverse=True)
+    average_inc = sum(
+        [p.max_exc_cov_increase for p in callgraph._unique_paths])/len(sorted_paths)
+    average_exc = sum(
+        [p.max_inc_cov_increase for p in callgraph._unique_paths])/len(sorted_paths)
+
+    for i, path in enumerate(sorted_paths):
+        # Print only sufficiently affected paths
+        if path.max_inc_cov_increase > average_inc or \
+                path.max_exc_cov_increase > average_exc:
+            log.info("{}. {}\n inc_ratio: {}, exc_ratio: {}".format(
+                str(i+1), path.to_string(), path.max_inc_cov_increase, path.max_exc_cov_increase))
+
+
+def draw_paths_heatmap(callgraph, graphs_dir, fuzzing_timestamp):
+    """Using overall coverage information about callgraph pahts, this functions draws two heatmaps,
+        where each cell represent the max coverage ratio of the belonging path.
+
+    :param CallGraph callgraph: struct of the target application callgraph
+    :param str graphs_dir: path to the dir, where graphs (as one of the fuzzing outputs) are stored
+    :param str fuzzing_timestamp: string with the datetime we use to distinguish outputs from different
+        fuzz testing runs
+    """
+    path_count = len(callgraph._unique_paths)
+    rows = math.floor(math.sqrt(path_count))
+    cols = math.ceil(path_count/rows)
+    empty_cells = (rows*cols) - path_count
+
+    # Gather the data about coverage
+    data_inc = [
+        path.max_inc_cov_increase for path in callgraph._unique_paths] + ([0]*empty_cells)
+    data_exc = [
+        path.max_exc_cov_increase for path in callgraph._unique_paths] + ([0]*empty_cells)
+    # Mask for empty cells in future matrix (padding)
+    mask = ([False]*path_count) + ([True]*empty_cells)
+
+    # Transform each list to 2d array (matrix)
+    data_inc = np.array(data_inc).reshape((rows,cols))
+    data_exc = np.array(data_exc).reshape((rows,cols))
+    mask = np.array(mask).reshape((rows,cols))
+
+    sns.set()
+    log.info("Plotting heatmaps of callgpaph paths coverage.", end="")
+    create_heatmap(data_inc, graphs_dir + "/" + fuzzing_timestamp +
+                   "_inc_paths_heatmap.png", cols, rows, mask)
+    create_heatmap(data_exc, graphs_dir + "/" + fuzzing_timestamp +
+                   "_exc_paths_heatmap.png", cols, rows, mask)
+    log.done()
+
+
+def create_heatmap(data, filename, cols, rows, mask):
+    """Helper function that uses seaborn and matplotlib in order to plot the heatmaps.
+
+    :param list data: coverage data of the paths
+    :param str filename: path to the output file (where to store the heatmap)
+    :param int cols: num of columns in heatmap
+    :param int rows: num of rows in heatmap
+    :param list mask: list of bool values used to mask the cells without the coverage value
+    """
+    with sns.axes_style("white"):
+        _, ax = plt.subplots(figsize=(cols, rows))
+        ax = sns.heatmap(data, mask=np.array(mask), annot=True, fmt=".2f",
+                         xticklabels=False, yticklabels=False, linewidths=.5,
+                         cbar_kws={"orientation": "horizontal"})
+        ax.figure.savefig(filename, dpi=300)
+    log.info('.', end="")
