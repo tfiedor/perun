@@ -46,27 +46,30 @@ import sys
 import click
 
 import perun.collect
+import perun.postprocess
+import perun.view
+
 import perun.fuzz.factory as fuzz
 import perun.logic.commands as commands
 import perun.logic.pcs as pcs
 import perun.logic.config as perun_config
-import perun.postprocess
 import perun.profile.helpers as profiles
 import perun.utils as utils
 import perun.utils.helpers as helpers
 import perun.utils.cli_helpers as cli_helpers
 import perun.utils.log as perun_log
 import perun.view
-from perun.utils.exceptions import UnsupportedModuleException, UnsupportedModuleFunctionException, \
-    NotPerunRepositoryException, IncorrectProfileFormatException, EntryNotFoundException, \
-    MissingConfigSectionException, ExternalEditorErrorException
-from perun.utils.structs import Executable
 from perun.collect.trace.optimizations.structs import Pipeline, Optimizations, CallGraphTypes
 from perun.collect.trace.optimizations.structs import Parameters
 import perun.cli_groups.check_cli as check_cli
 import perun.cli_groups.config_cli as config_cli
 import perun.cli_groups.run_cli as run_cli
 import perun.cli_groups.utils_cli as utils_cli
+
+from perun.utils.exceptions import UnsupportedModuleException, UnsupportedModuleFunctionException, \
+    NotPerunRepositoryException, IncorrectProfileFormatException, EntryNotFoundException, \
+    MissingConfigSectionException, ExternalEditorErrorException
+from perun.utils.structs import Executable
 
 
 __author__ = 'Tomas Fiedor'

@@ -196,7 +196,7 @@ def error(msg, recoverable=False, raised_exception=None):
 
     # If we cannot recover from this error, we end
     if not recoverable:
-        exit(1)
+        sys.exit(1)
 
 
 def warn(msg, end="\n"):
@@ -290,6 +290,13 @@ def no(ending='\n'):
     print('[', end='')
     cprint('\u2717', 'red', attrs='bold')
     print(']', end=ending)
+
+
+def newline():
+    """
+    Prints blank line
+    """
+    print("")
 
 
 def in_color(output, color='white', attribute_style="none"):
@@ -407,7 +414,7 @@ def print_short_change_string(counts):
     if overall_changes > 0:
         change_string = change_counts_to_string(counts)
         print(" | {}".format(change_string), end='')
-    print("")
+    newline()
 
 
 def _print_models_info(deg_info, model_strategy):
@@ -483,7 +490,7 @@ def _print_partial_intervals(partial_intervals):
                 "<{}, {}> {}x; ".format(x_start, x_end, rel_error),
                 CHANGE_COLOURS.get(change_info, 'white')
             )
-    print("")
+    newline()
 
 
 def print_list_of_degradations(degradation_list, model_strategy="best-model"):
@@ -534,7 +541,7 @@ def print_list_of_degradations(degradation_list, model_strategy="best-model"):
             # Print information about the change on the partial intervals (only at Local-Statistics)
             if deg_info.partial_intervals is not None:
                 _print_partial_intervals(deg_info.partial_intervals)
-    print("")
+    newline()
 
 
 def aggregate_intervals(intervals):
@@ -634,8 +641,8 @@ def scan_formatting_string(fmt, callbacks, callback=identity, default_fmt_callba
     i = 0
     tokens = []
     current_token = ""
-    for c in fmt:
-        if c == sep:
+    for character in fmt:
+        if character == sep:
             # found start or end of the token
             i += 1
             if i % 2 == 0:
@@ -646,7 +653,7 @@ def scan_formatting_string(fmt, callbacks, callback=identity, default_fmt_callba
                 tokens.append(("raw_string", callback(current_token)))
             current_token = ""
         else:
-            current_token += c
+            current_token += character
 
     # Add what is rest
     if current_token:

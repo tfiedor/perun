@@ -8,6 +8,7 @@ import sys
 import time as systime
 import click
 
+import perun.utils.log as log
 import perun.logic.runner as runner
 import perun.utils as utils
 import perun.utils.helpers as helpers
@@ -28,15 +29,15 @@ def collect(executable, repeat=10, warmup=3, **kwargs):
     :param dict kwargs: dictionary with key, value options
     :return:
     """
-    print('Executing the warmup-phase ', end='')
+    log.info('Executing the warmup-phase ', end='')
     for timing in range(0, warmup):
         command = " ".join(['time -p', str(executable)]).split(' ')
         utils.get_stdout_from_external_command(command).split('\n')
         print('.', end='')
         sys.stdout.flush()
-    print("")
+    log.newline()
 
-    print('Begin timing of {} {}'.format(
+    log.info('Begin timing of {} {}'.format(
         executable.cmd, helpers.str_to_plural(repeat, "time")
     ), end='')
     times = []
@@ -50,9 +51,9 @@ def collect(executable, repeat=10, warmup=3, **kwargs):
             (timing, t[0], t[1]) for t in map(lambda x: x.split(' '), collected_data)
             if len(t) == 2 and t[0] in TIME_TYPES
         ])
-        print('.', end='')
+        log.info('.', end='')
         sys.stdout.flush()
-    print("")
+    log.newline()
     overall_time = systime.time() - before_timing
 
     return CollectStatus.OK, "", {'profile': {

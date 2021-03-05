@@ -334,3 +334,28 @@ class OrderedEnum(Enum):
         if self.__class__ is other.__class__:
             return self.order < other.order
         return NotImplemented
+
+class ProfileListConfig:
+    """
+    :ivar str colour: colour of the printed list
+    :ivar str ending: ending for summary of the number of profiles
+    :ivar int list_len: length of the profile list
+    :ivar str id_char: character that represents either pending (p) or indexed (i) profiles
+    :ivar int id_width: number of characters needed for the left column that counts the index of
+        the profile in the list
+    :ivar int header_width: overall width of the profile list
+    """
+    def __init__(self, list_type, short, profile_list):
+        """Initializes the configuration for the profile list.
+
+        :param str list_type: type of the profile list (either untracked or untracked)
+        :param bool short: true if the list should be short
+        :param list profile_list: list of profiles
+        """
+        self.colour = 'white' if list_type == 'tracked' else 'red'
+        self.ending = ':\n\n' if not short else "\n"
+        self.list_len = len(profile_list)
+        self.id_char = 'i' if list_type == 'tracked' else 'p'
+        self.id_width = len(str(self.list_len))
+        # The magic 3 corresponds to the fixed string @p or @i
+        self.header_width = self.id_width + 3

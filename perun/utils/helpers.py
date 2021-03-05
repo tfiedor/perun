@@ -286,17 +286,17 @@ def default_signal_handler(signum, frame):
     raise SignalReceivedException(signum, frame)
 
 
-def is_variable_len_dict(value):
-    """This tests for a case when value is a list with dictionaries containing name and value
+def is_variable_len_dict(list_value):
+    """This tests for a case when list_value is a list with dictionaries containing name and list_value
     keys only.
 
     This the case, e.g. for coefficients of models.
 
-    :param object value: object we are testing
-    :return: true if value is variable length dictionary
+    :param list list_value: object we are testing
+    :return: true if list_value is variable length dictionary
     """
-    return isinstance(value, list) and all(
-        isinstance(v, dict) and set(v.keys()) == {'name', 'value'} for v in value
+    return len(list_value) and all(
+        isinstance(v, dict) and set(v.keys()) == {'name', 'value'} for v in list_value
     )
 
 

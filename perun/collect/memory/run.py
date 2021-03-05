@@ -111,20 +111,20 @@ def after(executable, sampling=DEFAULT_SAMPLING, **kwargs):
     filters.set_global_region(profile)
 
     if not include_all:
-        print("Filtering traces: ", end='')
+        log.info("Filtering traces: ", end='')
         filters.remove_allocators(profile)
         filters.trace_filter(profile, function=['?'], source=['unreachable'])
         log.done()
 
     if exclude_funcs or exclude_sources:
-        print("Excluding functions and sources: ", end='')
+        log.info("Excluding functions and sources: ", end='')
         filters.allocation_filter(profile, function=[exclude_funcs], source=[exclude_sources])
         log.done()
 
-    print("Clearing records without assigned UID from profile: ", end='')
+    log.info("Clearing records without assigned UID from profile: ", end='')
     filters.remove_uidless_records_from(profile)
     log.done()
-    print("")
+    log.newline()
 
     return CollectStatus.OK, '', {'profile': profile}
 

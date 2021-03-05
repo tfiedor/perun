@@ -287,7 +287,7 @@ def run_collector(collector, job):
             collector.name, collection_report.message
         ), recoverable=True, raised_exception=collection_report.exception)
     else:
-        print("Successfully collected data from {}".format(job.executable.cmd))
+        log.info("Successfully collected data from {}".format(job.executable.cmd))
 
     return collection_report.status, prof
 
@@ -351,7 +351,7 @@ def run_postprocessor(postprocessor, job, prof):
             postprocessor.name, postprocess_report.message
         ), recoverable=True)
     else:
-        print("Successfully postprocessed data by {}".format(postprocessor.name))
+        log.info("Successfully postprocessed data by {}".format(postprocessor.name))
 
     return postprocess_report.status, prof
 
@@ -420,7 +420,7 @@ def run_prephase_commands(phase, phase_colour='white'):
     cmds = pcs.local_config().safe_get(phase_key, [])
     if cmds:
         log.cprint("Running '{}' phase".format(phase), phase_colour)
-        print("")
+        log.newline()
         try:
             utils.run_safely_list_of_commands(cmds)
         except subprocess.CalledProcessError as exception:
@@ -448,7 +448,7 @@ def generate_jobs_on_current_working_dir(job_matrix, number_of_jobs):
 
     log.print_job_progress.current_job = 1
     collective_status = CollectStatus.OK
-    print("")
+    log.newline()
     for job_cmd, workloads_per_cmd in job_matrix.items():
         log.print_current_phase("Collecting profiles for {}", job_cmd, COLLECT_PHASE_CMD)
         for workload, jobs_per_workload in workloads_per_cmd.items():
@@ -508,12 +508,12 @@ def generate_jobs_with_history(minor_version_list, job_matrix, number_of_jobs):
         with vcs.CleanState():
             for minor_version in minor_version_list:
                 history.progress_to_next_minor_version(minor_version)
-                print("")
+                log.newline()
                 history.finish_minor_version(minor_version, [])
                 vcs.checkout(minor_version.checksum)
                 run_prephase_commands('pre_run', COLLECT_PHASE_CMD)
                 yield from generate_jobs_on_current_working_dir(job_matrix, number_of_jobs)
-                print("")
+                log.newline()
                 history.flush(with_border=True)
 
 

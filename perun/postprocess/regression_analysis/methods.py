@@ -284,16 +284,21 @@ def _bisection_step(x_pts, y_pts, computation_models, last_model):
         yield last_model
         return
 
+    def _model_bisection(i):
+        """Wrapper that iterates over half of the model
+
+        :param int i: either 0 or 1 for iteration of left or right model
+        """
+        x, y = parts[i][0], parts[i][1]
+        for half_model in _bisection_solve_half_model(
+                x_pts[x:y], y_pts[x:y], computation_models, half_models[i], last_model
+        ):
+            yield half_model
+
     # Check the first half interval and continue with bisection if needed
-    for half_model in _bisection_solve_half_model(x_pts[parts[0][0]:parts[0][1]],
-                                                  y_pts[parts[0][0]:parts[0][1]],
-                                                  computation_models, half_models[0], last_model):
-        yield half_model
+    yield from _model_bisection(0)
     # Check the second half interval and continue with bisection if needed
-    for half_model in _bisection_solve_half_model(x_pts[parts[1][0]:parts[1][1]],
-                                                  y_pts[parts[1][0]:parts[1][1]],
-                                                  computation_models, half_models[1], last_model):
-        yield half_model
+    yield from _model_bisection(1)
 
 
 def _bisection_solve_half_model(x_pts, y_pts, computation_models, half_model, last_model):

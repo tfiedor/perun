@@ -464,7 +464,7 @@ def _get_default_variable(profile, supported_variables):
     :return: default key picked from the list of supported fields (either for dependent or
         independent variables)
     """
-    resource_fields = list(query.all_resource_fields_of(profile))
+    resource_fields = list(profile.all_resource_fields())
     candidates = [var for var in supported_variables if var in set(resource_fields)]
     if candidates:
         # Return first suitable candidate, according to the given order

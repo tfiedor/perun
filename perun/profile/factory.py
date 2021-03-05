@@ -12,6 +12,7 @@ import itertools
 import click
 
 import perun.profile.convert as convert
+import perun.profile.query as query
 import perun.logic.config as config
 
 from perun.check.general_detection import get_filtered_best_models_of
@@ -54,6 +55,7 @@ class Profile(collections.MutableMapping):
             'models': global_data.get('models', []) if isinstance(global_data, dict) else []
         }
         self._tuple_to_resource_type_map = {}
+        self._resource_type_to_flattened_resources_map = {}
         self._uid_counter = collections.Counter()
 
         for key, value in initialization_data.items():
@@ -81,16 +83,15 @@ class Profile(collections.MutableMapping):
             self._storage['resources'].clear()
         if resource_type == 'global' and isinstance(resource_list, dict) and resource_list:
             # Resources are in type of {'time': _, 'resources': []}
-            self._translate_resources(resource_list['resources'], {
-                'time': resource_list.get('time', '0.0')
-            })
+            self._translate_resources(
+                resource_list['resources'], {'time': resource_list.get('time', '0.0')}
+            )
         elif resource_type == 'snapshots':
             # Resources are in type of [{'time': _, 'resources': []}
             for i, snapshot in enumerate(resource_list):
-                self._translate_resources(snapshot['resources'], {
-                                              'snapshot': i,
-                                              'time': snapshot.get('time', '0.0')}
-                                          )
+                self._translate_resources(
+                    snapshot['resources'], {'snapshot': i, 'time': snapshot.get('time', '0.0')}
+                )
         elif isinstance(resource_list, (dict, Profile)):
             self._storage['resources'].update(resource_list)
         else:
@@ -100,7 +101,7 @@ class Profile(collections.MutableMapping):
         """Translate the list of resources to efficient format
         Given a list of resources, this is all flattened into a new format: a dictionary that
         maps unique resource identifiers (set of persistent properties) to list of collectable
-        properties (such as ammounts, addresses, etc.)
+        properties (such as amounts, addresses, etc.)
 
         :param resource_list:
         :param additional_params:
@@ -141,7 +142,7 @@ class Profile(collections.MutableMapping):
         """Registers tuple of persistent properties under new key or return existing one
 
         :param str uid: uid of the resource that will be used to describe the resource type
-        :param tuple persistent_properties: tuple or persistent properties
+        :param tuple persistent_properties: tuple of persistent properties
         :return: uid corresponding to the tuple of persistent properties
         """
         property_key = str(convert.flatten(persistent_properties))
@@ -207,7 +208,44 @@ class Profile(collections.MutableMapping):
         """
         return self._storage
 
-    def all_resources(self):
+    def _get_flattened_persistent_values_for(self, resource_type):
+        """Flattens the nested values of the resources to single level
+
+        E.g. the following resource:
+
+        .. code-block:: json
+
+            {
+                "type": "memory",
+                "amount": 4,
+                "uid": {
+                    "source": "../memory_collect_test.c",
+                    "function": "main",
+                    "line": 22
+                }
+            }
+
+        is flattened as follows::
+
+            {
+                "type": "memory",
+                "amount": 4,
+                "uid": "../memory_collect_test.c:main:22",
+                "uid:eource": "../memory_collect_test.c",
+                "uid:function": "main",
+                "uid:line": 22
+            }
+
+        :param str resource_type: type of the resource
+        :return: flattened resource
+        """
+        if resource_type not in self._resource_type_to_flattened_resources_map.keys():
+            persistent_properties = self._storage['resource_type_map'][resource_type]
+            flattened_resources = dict(list(query.all_items_of(persistent_properties)))
+            self._resource_type_to_flattened_resources_map[resource_type] = flattened_resources
+        return self._resource_type_to_flattened_resources_map[resource_type]
+
+    def all_resources(self, flatten_values=False):
         """Generator for iterating through all of the resources contained in the
         performance profile.
 
@@ -216,16 +254,23 @@ class Profile(collections.MutableMapping):
         refer to :pkey:`resources`. Resources are not flattened and, thus, can
         contain nested dictionaries (e.g. for `traces` or `uids`).
 
+        :param bool flatten_values: if set to true, then the persistent values will
+            be flattened to one level.
         :returns: iterable stream of resources represented as pair ``(int, dict)``
             of snapshot number and the resources w.r.t. the specification of the
             :pkey:`resources`
         """
         for resource_type, resources in self._storage['resources'].items():
             # uid: {...}
-            persistent_properties = self._storage['resource_type_map'][resource_type]
+            if flatten_values:
+                persistent_properties = self._get_flattened_persistent_values_for(resource_type)
+            else:
+                persistent_properties = self._storage['resource_type_map'][resource_type]
+
             if resources:
                 resource_keys = resources.keys()
                 for resource_values in zip(*resources.values()):
+                    # collectable values should be flat
                     collectable_properties = dict(zip(resource_keys, resource_values))
                     collectable_properties.update(persistent_properties)
                     snapshot_number = collectable_properties.get('snapshot', 0)
@@ -233,6 +278,38 @@ class Profile(collections.MutableMapping):
             else:
                 # In case we have only persistent properties
                 yield persistent_properties.get('snapshot', 0), persistent_properties
+
+    def all_resource_fields(self):
+        """Generator for iterating through all of the fields (both flattened and
+        original) that are occurring in the resources.
+
+        E.g. considering the example profiles from :pkey:`resources`, the function
+        yields the following for `memory`, `time` and `trace` profiles
+        respectively (considering we convert the stream to list)::
+
+            memory_resource_fields = [
+                'type', 'address', 'amount', 'uid:function', 'uid:source',
+                'uid:line', 'uid', 'trace', 'subtype'
+            ]
+            time_resource_fields = [
+                'type', 'amount', 'uid'
+            ]
+            complexity_resource_fields = [
+                'type', 'amount', 'structure-unit-size', 'subtype', 'uid'
+            ]
+
+        :returns: iterable stream of resource field keys represented as `str`
+        """
+        keys = set()
+        for resource_type, resources in self._storage['resources'].items():
+            # uid: {...}
+            persistent_properties = query.all_items_of(
+                self._storage['resource_type_map'][resource_type]
+            )
+            if resources:
+                keys.update(resources.keys())
+            keys.update({k for (k, v) in persistent_properties})
+        return keys
 
     def all_filtered_models(self, models_strategy):
         """

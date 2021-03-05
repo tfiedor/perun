@@ -613,9 +613,8 @@ def remove_from_index(base_dir, minor_version, removed_file_generator):
         result_string = perun_log.in_color("{}".format(
             helpers.str_to_plural(removed_profile_number, "profile")
         ), 'white', 'bold')
-        index_sha = perun_log.in_color(minor_version, 'green')
         perun_log.info("successfully deregistered {} from {} index".format(
-            result_string, index_sha
+            result_string, perun_log.in_color(minor_version, 'green')
         ))
 
 

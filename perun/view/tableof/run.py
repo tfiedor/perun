@@ -20,7 +20,7 @@ def get_headers(ctx):
     """
     headers = []
     if ctx.command.name == 'resources':
-        headers = list(query.all_resource_fields_of(ctx.parent.parent.params['profile'])) \
+        headers = list(ctx.parent.parent.params['profile'].all_resource_fields()) \
                   + ['snapshots']
     elif ctx.command.name == 'models':
         headers = list(query.all_model_fields_of(ctx.parent.parent.params['profile']))

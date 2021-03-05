@@ -111,7 +111,7 @@ def check_head(head_minor='HEAD'):
 
     By default the ``hash`` corresponds to the `head` of the current project.
     """
-    print("")
+    log.newline()
     check.degradation_in_minor(head_minor)
 
 
@@ -167,7 +167,7 @@ def check_profiles(ctx, baseline_profile, target_profile, minor, **_):
            is asked for confirmation by user.
 
     """
-    print("")
+    log.newline()
     check.degradation_between_files(
         baseline_profile, target_profile, minor, ctx.parent.params['models_type']
     )

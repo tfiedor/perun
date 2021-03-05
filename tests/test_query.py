@@ -182,7 +182,7 @@ def test_all_items_of_memory_resources(query_profiles):
     # TODO: compare
     assert len(items) == _MEMORY_RESOURCE_ITEMS_COUNT
 
-    resources = query.all_resource_fields_of(mem_profile)
+    resources = mem_profile.all_resource_fields()
     assert set(resources) == _MEMORY_RESOURCE_FIELDS
 
 

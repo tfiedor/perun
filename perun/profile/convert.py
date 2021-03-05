@@ -16,6 +16,7 @@ import perun.utils.helpers as helpers
 import perun.profile.query as query
 import perun.postprocess.regression_analysis.transform as transform
 import operator
+import array
 
 import demandimport
 with demandimport.enabled():
@@ -58,16 +59,16 @@ def resources_to_pandas_dataframe(profile):
     :returns: converted profile to ``pandas.DataFramelist`` with resources
         flattened as a pandas dataframe
     """
-    # Note that we need to to this inefficiently, because some keys can be missing in resources
-    resource_keys = list(query.all_resource_fields_of(profile))
+    # Since some keys may be missing in the resources, we consider all of the possible fields
+    resource_keys = list(profile.all_resource_fields())
     values = {key: [] for key in resource_keys}
-    values['snapshots'] = []
+    values['snapshots'] = array.array('I')
 
-    for (snapshot, resource) in profile.all_resources():
+    # All resources at this point should be flat
+    for (snapshot, resource) in profile.all_resources(True):
         values['snapshots'].append(snapshot)
-        flattened_resource = dict(list(query.all_items_of(resource)))
         for resource_key in resource_keys:
-            values[resource_key].append(flattened_resource.get(resource_key, numpy.nan))
+            values[resource_key].append(resource.get(resource_key, numpy.nan))
 
     return pandas.DataFrame(values)
 

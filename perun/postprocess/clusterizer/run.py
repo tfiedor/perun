@@ -49,10 +49,10 @@ def print_groups(resources):
     """
     groups = itertools.groupby(resources, resource_group_key)
     for group, members in groups:
-        print("--- {} ---".format(group))
+        log.info("--- {} ---".format(group))
         for member in members:
-            print(" -> {}[{}]".format(member['amount'], member.get('cluster', '?')), end='')
-        print("")
+            log.info(" -> {}[{}]".format(member['amount'], member.get('cluster', '?')), end='')
+        log.newline()
 
 
 def postprocess(profile, strategy, **kwargs):

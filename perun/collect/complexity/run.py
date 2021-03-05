@@ -197,19 +197,18 @@ def _process_file_record(record, call_stack, resources, address_map):
 def _check_dependencies():
     """Validates that dependencies (cmake and make) are met"""
     log.cprint('Checking dependencies...', 'white')
-    print("")
+    log.newline()
     log.cprint("make:", 'white')
-    print("\t", end="")
+    log.info("\t", end="")
     if not shutil.which('make'):
         log.no()
         log.error("Could not find 'make'. Please, install the makefile package.")
     log.yes()
     log.cprint("cmake:", 'white')
-    print("\t", end="")
+    log.info("\t", end="")
     if not shutil.which('cmake'):
         log.no()
-        log.error("Could not find 'cmake'. "
-                  "Please, install the build-essentials and cmake packages.")
+        log.error("Could not find 'cmake'. Please, install build-essentials and cmake packages.")
     log.done()
 
 

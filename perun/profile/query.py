@@ -45,18 +45,19 @@ def flattened_values(root_key, root_value):
         if isinstance(root_key, str):
             nested_values.sort(key=helpers.uid_getter)
             yield root_key, ":".join(map(str, map(operator.itemgetter(1), nested_values)))
-    # Lists that represent variable length dictionary
-    elif helpers.is_variable_len_dict(root_value):
-        dictionary = {
-            v['name']: v['value'] for v in root_value
-        }
-        yield from flattened_values(root_key, dictionary)
-    # Lists are merged as comma separated keys
     elif isinstance(root_value, list):
-        yield root_key, ','.join(
-            ":".join(str(nested_value[1]) for nested_value in flattened_values(i, lv))
-            for (i, lv) in enumerate(root_value)
-        )
+        # Lists that represent variable length dictionary
+        if helpers.is_variable_len_dict(root_value):
+            dictionary = {
+                v['name']: v['value'] for v in root_value
+            }
+            yield from flattened_values(root_key, dictionary)
+        # Lists are merged as comma separated keys
+        else:
+            yield root_key, ','.join(
+                ":".join(str(nested_value[1]) for nested_value in flattened_values(i, lv))
+                for (i, lv) in enumerate(root_value)
+            )
     # Rest of the values are left as they are
     else:
         yield root_key, root_value
@@ -102,31 +103,6 @@ def all_items_of(resource):
     for key, value in resource.items():
         for flattened_key, flattened_value in flattened_values(key, value):
             yield flattened_key, flattened_value
-
-
-def all_resource_fields_of(profile):
-    """Generator for iterating through all of the fields (both flattened and
-    original) that are occurring in the resources.
-
-    E.g. considering the example profiles from :pkey:`resources`, the function
-    yields the following for `memory`, `time` and `trace` profiles
-    respectively (considering we convert the stream to list)::
-
-        memory_resource_fields = [
-            'type', 'address', 'amount', 'uid:function', 'uid:source',
-            'uid:line', 'uid', 'trace', 'subtype'
-        ]
-        time_resource_fields = [
-            'type', 'amount', 'uid'
-        ]
-        complexity_resource_fields = [
-            'type', 'amount', 'structure-unit-size', 'subtype', 'uid'
-        ]
-
-    :param Profile profile: performance profile w.r.t :ref:`profile-spec`
-    :returns: iterable stream of resource field keys represented as `str`
-    """
-    yield from _all_fields_of(profile.all_resources)
 
 
 def all_model_fields_of(profile):
