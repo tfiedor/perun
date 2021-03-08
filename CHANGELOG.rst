@@ -6,12 +6,16 @@ HEAD
 
 **To be included in next release**
 
+  - Update README with additional install instructions
+  - SystemTap and BCC instructions for Ubuntu and Fedora 
+
+
 0.20 (2021-03-05)
 -----------------
 
 `commit: 12c181f1a3c94699ee2818f996ee2651a7e30578`
 
-**Add optimizations of collect processAdd optimizations of collect process**
+**Add optimizations of collect process**
 
   - add engines to the Tracer architecture
   - add eBPF instrumentation support to Tracer (using BCC)
